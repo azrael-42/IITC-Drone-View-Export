@@ -3,8 +3,8 @@
 // @name           IITC plugin: Drone View Export
 // @category       Misc
 // @version        0.1.0
-// @updateURL      https://github.com/azrael-42/IITC-Drone-View-Export/raw/master/dronehelper.user.js
-// @downloadURL    https://github.com/azrael-42/IITC-Drone-View-Export/raw/master/dronehelper.user.js
+// @updateURL      https://github.com/azrael-42/IITC-Drone-View-Export/raw/main/droneviewexport.user.js
+// @downloadURL    https://github.com/azrael-42/IITC-Drone-View-Export/raw/main/droneviewexport.user.js
 // @description    Export drone views - allows user selection of visible cells
 // @match          https://intel.ingress.com/*
 // @grant          none
