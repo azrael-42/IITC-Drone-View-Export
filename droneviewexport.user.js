@@ -2,7 +2,7 @@
 // @id             iitc-plugin-drone-view-export@azrael-42
 // @name           IITC plugin: Drone View Export
 // @category       Misc
-// @version        0.1.0
+// @version        0.2
 // @updateURL      https://github.com/azrael-42/IITC-Drone-View-Export/raw/main/droneviewexport.user.js
 // @downloadURL    https://github.com/azrael-42/IITC-Drone-View-Export/raw/main/droneviewexport.user.js
 // @description    Export drone views - allows user selection of visible cells
@@ -35,7 +35,8 @@ window.plugin.droneviewexport = {
   droneViewActive: null,
 
   cells: {size: 16, drawOptions: {stroke:true, color: '#888888', fillColor: '#aaaaaa', fillOpacity: 0.5, interactive: false}},
-  visParams: { radius: 501, cellSize: 16, type: 'cover', distance: 'haversineDistance', description: ''},
+  //visParams: { radius: 501, cellSize: 16, type: 'cover', distance: 'haversineDistance', description: ''},
+  visParams: { radius: 501, cellSize: 16, type: 'cover', distance: 'mercatorDistance', description: ''},
 
 
 setup: function() {
@@ -50,7 +51,10 @@ setup: function() {
     this.layer.addTo(map);
 
     this.addLeafletControl();
-  },
+
+  window.addPortalHighlighter('Check Drone Distance', window.plugin.droneviewexport.highlighter);
+
+},
 
   addLeafletControl: function() {
     $('<style>').prop('type', 'text/css').html(`
@@ -122,6 +126,8 @@ setup: function() {
 
           this.droneViewActive = map.hasLayer(window.plugin.dh_view.layer);
           if (this.droneViewActive) map.removeLayer(window.plugin.dh_view.layer);
+          this.currentHighlighter = window._current_highlighter;
+          changePortalHighlights(window._no_highlighter);
 
           this.exportData = data;
 
@@ -130,7 +136,7 @@ setup: function() {
           let foundPortals = 0;
 
           cells.forEach(cell => {
-            c = dh_S2.S2Cell.FromFaceIJ(cell.face,cell.ij,cell.level);
+            let c = dh_S2.S2Cell.FromFaceIJ(cell.face,cell.ij,cell.level);
             c.loadedPortals = cell.portals;
             c.portals = this.countPortals(c);
             if (c.loadedPortals < 0)
@@ -142,7 +148,7 @@ setup: function() {
 
           this.drawCells();
 
-          if (foundPortals != data.portalCount) alert("Found: " + foundPortals + ". Loaded: " + data.portalCount);
+          if (foundPortals !== data.portalCount) alert("Found: " + foundPortals + ". Loaded: " + data.portalCount);
 
         });
     }
@@ -162,7 +168,7 @@ setup: function() {
 
   startViewExport: function() {
     this.exportData = {};
-    let guid = window.selectedPortal;
+    const guid = window.selectedPortal;
     if (guid === null || guid === undefined) {
       this.active = false;
       return;
@@ -173,6 +179,8 @@ setup: function() {
 
     this.droneViewActive = map.hasLayer(window.plugin.dh_view.layer);
     if (this.droneViewActive) map.removeLayer(window.plugin.dh_view.layer);
+    this.currentHighlighter = window._current_highlighter;
+    changePortalHighlights(window._no_highlighter);
 
     this.exportData.portalPos = portals[guid]._latlng;
     this.exportData.visParams = this.visParams;
@@ -195,25 +203,29 @@ setup: function() {
     this.selectedCells.forEach(cell => {
       let corners = cell.getCornerLatLngs();
       let drawOptions = {...this.cells.drawOptions};
+      if (cell.distance > 499.9) {
+        drawOptions.color = '#880000';
+        drawOptions.fillColor = '#aa0000';
+      }
       if (cell.portals >= 0) {
-        if (cell.loadedPortals && this.countPortals(cell) != cell.loadedPortals) {
+        if (cell.loadedPortals !== undefined && this.countPortals(cell) !== cell.loadedPortals) {
           drawOptions.color = '#880000';
           drawOptions.fillColor = '#aa0000';
         }
         L.polygon(corners, drawOptions).addTo(this.layer);
       }
-      if (cell.loadedPortals < 0 && cell.portals == 0) {
+      if (cell.loadedPortals < 0 && cell.portals === 0) {
         //if (cell.portals < 0 && cell.loadedPortals && cell.portals != cell.loadedPortals) {
-        let drawOptions = {...this.cells.drawOptions};
+        drawOptions = {...this.cells.drawOptions};
         drawOptions.color = '#ffff00';
         drawOptions.fillColor = '#ffff66';
         L.polygon(corners, drawOptions).addTo(this.layer);
       }
     })
 
-    for (guid in portals) {
-      let testCell = new dh_S2.S2Cell.FromLatLng(portals[guid]._latlng, this.visParams.cellSize);
-      for (let cell of this.selectedCells) {
+    for (const guid in portals) {
+      const testCell = new dh_S2.S2Cell.FromLatLng(portals[guid]._latlng, this.visParams.cellSize);
+      for (const cell of this.selectedCells) {
         if (cell.equals(testCell) && cell.portals > 0) {
           const scale = portalMarkerScale();
           //	 portal level		 0	1  2  3  4	5  6  7  8
@@ -234,14 +246,13 @@ setup: function() {
   },
 
   toggleCell: function(e) {
-    let centre = map.containerPointToLatLng([e.originalEvent.clientX, e.originalEvent.clientY]);
+    const centre = map.containerPointToLatLng([e.originalEvent.clientX, e.originalEvent.clientY]);
 
-    let newCell = new dh_S2.S2Cell.FromLatLng(centre, this.visParams.cellSize);
-    let neighbours = newCell.getNeighbors();
+    const newCell = new dh_S2.S2Cell.FromLatLng(centre, this.visParams.cellSize);
+    const neighbours = newCell.getNeighbors();
 
     let found = false;
     let neighbour = false;
-    let oldCell = null
     for (let i = 0; i < this.selectedCells.length; i++) {
       if (this.selectedCells[i].equals(newCell)) {
         found = true;
@@ -265,12 +276,14 @@ setup: function() {
 
   endViewExport: function() {
     if (this.droneViewActive) map.addLayer(window.plugin.dh_view.layer);
+    changePortalHighlights(this.currentHighlighter);
+
     map.removeLayer(this.layer);
     map.off('click', this.toggleCell, this);
 
     let portalCount = 0;
 
-    for (let cell of this.selectedCells) {
+    for (const cell of this.selectedCells) {
       if (cell.portals > 0)
         portalCount += cell.portals;
       delete cell.loadedPortals;
@@ -284,9 +297,9 @@ setup: function() {
   },
 
   countPortals: function(cell) {
-    portalCount = 0;
-    for (guid in portals) {
-      let testCell = new dh_S2.S2Cell.FromLatLng(portals[guid]._latlng, this.visParams.cellSize);
+    let portalCount = 0;
+    for (const guid in portals) {
+      const testCell = new dh_S2.S2Cell.FromLatLng(portals[guid]._latlng, this.visParams.cellSize);
       if (cell.equals(testCell)) {
         portalCount++;
       }
@@ -305,9 +318,53 @@ setup: function() {
       alert('cannot export route - browser compatibility issue');
     }
   },
+
+  highlighter: {
+    styles: {closeDistance: {fillColor: 'black', fillOpacity: 0.7},
+      },
+
+    highlight: function(data) {
+      const guid = data.portal.options.ent[0];
+
+      let style = {};
+      if (window.plugin.dh_distance.startPortal == null || window.plugin.dh_distance.startPortal === {}) return;
+
+      const mercator = window.plugin.droneHelper.mercatorDistance(window.plugin.dh_distance.startPortal._latlng, data.portal._latlng)/1000;
+      const haversine = window.plugin.droneHelper.haversineDistance(window.plugin.dh_distance.startPortal._latlng, data.portal._latlng)/1000;
+
+      let checkDistance = false;
+
+      if (Math.floor(mercator) !== Math.floor(haversine) || //*/
+        //(Math.round(mercator) - mercator > -0.05 && Math.round(mercator) - mercator < 0.05) ||
+        (Math.round(haversine) - haversine > -0.005 && Math.round(haversine) - haversine < 0.005)) { // below or above
+        checkDistance = true;
+      }
+
+      if (checkDistance) {
+        style = this.styles.closeDistance;
+      } else {
+        style = {};
+      }
+
+      const droneVisit = window.plugin.dh_visits.droneVisited[guid] ? window.plugin.dh_visits.droneVisited[guid].visited : false;
+
+      if (droneVisit) {
+        style.color = 'black';
+      } else {
+        style.color = 'white';
+      }
+
+      data.portal.setStyle(style);
+    },
+
+    setSelected: function(active) {
+      window.plugin.dh_visits.isHighlightActive = active;
+    }
+  }
+
 }
 
-var setup = function() {
+const setup = function() {
   window.plugin.droneviewexport.setup();
 
 }
